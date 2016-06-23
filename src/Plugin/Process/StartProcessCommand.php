@@ -26,81 +26,34 @@ use Symfony\Component\Process\ProcessBuilder;
 class StartProcessCommand extends ToolbeltCommand
 {
     /** @var string */
-    private $processCommand;
+    protected $processCommand;
     /** @var string */
-    private $cwd;
+    protected $cwd;
     /** @var array */
-    private $envVars;
+    protected $envVars;
     /** @var mixed */
-    private $input;
+    protected $input;
     /** @var int */
-    private $timeout;
+    protected $timeout;
+    /** @var bool */
+    protected $tty;
+    /** @var bool */
+    protected $inheritEnv;
     /** @var array */
-    private $processOptions;
-    /** @var ProcessParameterMappingInterface[] */
-    private $mappings;
+    protected $processOptions;
 
     /**
      * {@inheritdoc}
      */
     public function __construct($name = null)
     {
-        $this->mappings = [];
-
-        parent::__construct($name);
-
         $this->timeout        = 60;
         $this->processOptions = [];
         $this->envVars        = [];
-    }
+        $this->inheritEnv     = false;
+        $this->tty            = false;
 
-    /**
-     * @param string $parameterName
-     * @param string $type
-     * @param array  $options
-     *
-     * @return $this
-     */
-    public function addParameterMapping(
-        $parameterName,
-        $type,
-        array $options = []
-    ) {
-        $factory = new ProcessParameterMappingFactory();
-
-        $this->registerParameterMapping(
-            $factory->buildMapping($parameterName, $type, $options)
-        );
-
-        return $this;
-    }
-
-    /**
-     * @param ProcessParameterMappingInterface $mapping
-     */
-    private function registerParameterMapping(ProcessParameterMappingInterface $mapping)
-    {
-        if ($mapping instanceof ProcessArgumentMapping) {
-            if (!$this->getDefinition()->hasArgument($mapping->getParameterName())) {
-                throw new \LogicException(
-                    sprintf(
-                        'The argument "%s" does not exists thus can\'t be mapped.',
-                        $mapping->getParameterName()
-                    )
-                );
-            }
-        } elseif ($mapping instanceof ProcessOptionMapping) {
-            if (!$this->getDefinition()->hasOption($mapping->getParameterName())) {
-                throw new \LogicException(
-                    sprintf(
-                        'The option "%s" does not exists thus can\'t be mapped.',
-                        $mapping->getParameterName()
-                    )
-                );
-            }
-        }
-
-        $this->mappings[] = $mapping;
+        parent::__construct($name);
     }
 
     /**
@@ -174,6 +127,30 @@ class StartProcessCommand extends ToolbeltCommand
     }
 
     /**
+     * @param boolean $tty
+     *
+     * @return $this
+     */
+    public function setTty($tty)
+    {
+        $this->tty = $tty;
+
+        return $this;
+    }
+
+    /**
+     * @param boolean $inheritEnv
+     *
+     * @return $this
+     */
+    public function setInheritEnv($inheritEnv)
+    {
+        $this->inheritEnv = $inheritEnv;
+
+        return $this;
+    }
+
+    /**
      * @param string $processOption
      *
      * @return $this
@@ -190,53 +167,7 @@ class StartProcessCommand extends ToolbeltCommand
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $parameters = [];
-        foreach ($this->mappings as $mapping) {
-            if ($mapping instanceof ProcessArgumentMapping) {
-                $parameter = $input->getArgument($mapping->getParameterName());
-
-                if (null !== $filter = $mapping->getFilter()) {
-                    $parameter = $filter($parameter);
-                }
-            } elseif ($mapping instanceof ProcessOptionMapping) {
-                $optionValue = $input->getOption($mapping->getParameterName());
-
-                if (null !== $filter = $mapping->getFilter()) {
-                    $parameter = $filter($optionValue);
-                } else {
-                    $optionDefinition = $this->getDefinition()->getOption($mapping->getParameterName());
-                    $parameter = sprintf(
-                        '%s %s',
-                        $mapping->useShortcut()
-                            ? '-' . $optionDefinition->getShortcut()
-                            : '--' . $optionDefinition->getName(),
-                        $optionValue
-                    );
-                }
-            } else {
-                continue;
-            }
-
-            if (null !== $parameter) {
-                $parameters[] = $parameter;
-            }
-        }
-
-        $builder = new ProcessBuilder();
-        $builder
-            ->setPrefix($this->processCommand)
-            ->setArguments($parameters)
-            ->setWorkingDirectory($this->cwd)
-            ->setInput($this->input ? $this->input : $input)
-            ->addEnvironmentVariables($this->envVars)
-            ->setTimeout($this->timeout)
-        ;
-
-        foreach ($this->processOptions as $name => $value) {
-            $builder->setOption($name, $value);
-        }
-
-        $process = $builder->getProcess();
+        $process = $this->getProcess($input);
 
         if ($output->getVerbosity() >= OutputInterface::VERBOSITY_VERBOSE) {
             $output->writeln('<info>Executing: ' . $process->getCommandLine() . '</info>');
@@ -257,5 +188,29 @@ class StartProcessCommand extends ToolbeltCommand
         }
 
         return $process->getExitCode();
+    }
+
+    /**
+     * @param InputInterface $input
+     *
+     * @return Process
+     */
+    protected function getProcess(InputInterface $input)
+    {
+        $process = new Process($this->processCommand);
+        $process
+            ->setWorkingDirectory($this->cwd)
+            ->setInput($this->input ? $this->input : $input)
+            ->setTimeout($this->timeout)
+            ->setTty($this->tty)
+        ;
+
+        if ($this->inheritEnv) {
+            $process->setEnv(array_replace($_ENV, $_SERVER, $this->envVars));
+        } else {
+            $process->setEnv($this->envVars);
+        }
+
+        return $process;
     }
 }

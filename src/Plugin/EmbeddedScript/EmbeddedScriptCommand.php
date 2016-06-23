@@ -12,6 +12,7 @@ namespace PHPSub\Plugin\EmbeddedScript;
 
 use PHPSub\Plugin\PluginAwareCommand;
 use PHPSub\Plugin\PluginAwareTrait;
+use PHPSub\Plugin\Process\MappedArgumentProcessCommand;
 use PHPSub\Plugin\Process\StartProcessCommand;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
@@ -21,7 +22,7 @@ use Symfony\Component\Console\Question\ConfirmationQuestion;
 /**
  * @author Sylvain Mauduit <sylvain@mauduit.fr>
  */
-abstract class EmbeddedScriptCommand extends StartProcessCommand implements PluginAwareCommand
+abstract class EmbeddedScriptCommand extends MappedArgumentProcessCommand implements PluginAwareCommand
 {
     use PluginAwareTrait;
 
@@ -143,7 +144,7 @@ abstract class EmbeddedScriptCommand extends StartProcessCommand implements Plug
             }
         }
 
-        parent::setProcessCommand($scriptPath);
+        $this->setProcessPrefix($scriptPath);
 
         return parent::execute($input, $output);
     }
